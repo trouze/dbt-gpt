@@ -1,0 +1,5 @@
+name: dbt_gpt
+version: 1.3.0
+config-version: 2
+
+macro-paths: ["macros"]
