@@ -1,19 +1,8 @@
 fixed:
   type: gpt
 prompts:
-  host:
-    hint: "your host name"
-  port:
-    default: 5432
-    type: "int"
-  user:
-    hint: "dev username"
-  password:
-    hint: "dev password"
+  api_key:
     hide_input: true
-  dbname:
-    hint: "default database"
-  threads:
-    hint: "1 or more"
-    type: "int"
-    default: 1
+  model:
+    hint: "the model type to use"
+    default: "gpt-3.5-turbo"   

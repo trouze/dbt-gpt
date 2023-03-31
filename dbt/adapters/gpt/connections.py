@@ -1,11 +1,16 @@
 from contextlib import contextmanager
 from dataclasses import dataclass
-import dbt.exceptions # noqa
+from typing import Optional
+from dbt.exceptions import (
+    FailedToConnectError,
+    DbtRuntimeError
+)
+from dbt.contracts.connection import ConnectionState
 from dbt.adapters.base import Credentials
-
 from dbt.adapters.base import BaseConnectionManager as connection_cls
 
 from dbt.logger import GLOBAL_LOGGER as logger
+import openai
 
 @dataclass
 class GptCredentials(Credentials):
@@ -14,17 +19,11 @@ class GptCredentials(Credentials):
     profiles.yml to connect to new adapter
     """
 
-    # Add credentials members here, like:
-    # host: str
-    # port: int
-    # username: str
-    # password: str
+    api_key: str
+    model: str
+    organization: Optional[str] = None
 
-    _ALIASES = {
-        "dbname":"database",
-        "pass":"password",
-        "user":"username"
-    }
+    _ALIASES = {}
 
     @property
     def type(self):
@@ -37,13 +36,13 @@ class GptCredentials(Credentials):
         Hashed and included in anonymous telemetry to track adapter adoption.
         Pick a field that can uniquely identify one team/organization building with this adapter
         """
-        return self.host
+        return self.organization
 
     def _connection_keys(self):
         """
         List of keys to display in the `dbt debug` output.
         """
-        return ("host","port","username","user")
+        return ("organization","model",openai.Model.retrieve(connection.credentials.model))
 
 class GptConnectionManager(connection_cls):
     TYPE = "gpt"
@@ -56,19 +55,13 @@ class GptConnectionManager(connection_cls):
         from queries, catch, log, and raise dbt exceptions it knows how to handle.
         """
         # ## Example ##
-        # try:
-        #     yield
-        # except myadapter_library.DatabaseError as exc:
-        #     self.release(connection_name)
+        try:
+            yield
 
-        #     logger.debug("myadapter error: {}".format(str(e)))
-        #     raise dbt.exceptions.DatabaseException(str(exc))
-        # except Exception as exc:
-        #     logger.debug("Error running SQL: {}".format(sql))
-        #     logger.debug("Rolling back transaction.")
-        #     self.release(connection_name)
-        #     raise dbt.exceptions.RuntimeException(str(exc))
-        pass
+        except Exception as exc:
+            logger.debug("Error running chat prompt: {}".format(sql))
+            raise DbtRuntimeError(str(exc))
+
 
     @classmethod
     def open(cls, connection):
@@ -76,47 +69,45 @@ class GptConnectionManager(connection_cls):
         Receives a connection object and a Credentials object
         and moves it to the "open" state.
         """
-        # ## Example ##
-        # if connection.state == "open":
-        #     logger.debug("Connection is already open, skipping open.")
-        #     return connection
+        if connection.state == "open":
+            logger.debug("Connection is already open, skipping open.")
+            return connection
 
-        # credentials = connection.credentials
+        credentials = connection.credentials
 
-        # try:
-        #     handle = myadapter_library.connect(
-        #         host=credentials.host,
-        #         port=credentials.port,
-        #         username=credentials.username,
-        #         password=credentials.password,
-        #         catalog=credentials.database
-        #     )
-        #     connection.state = "open"
-        #     connection.handle = handle
-        # return connection
-        pass
+        try:
+            openai.api_key = credentials.api_key
+            openai.organization = credentials.organization
+            test = openai.Model.retrieve(credentials.model)
+            handle = openai
+
+        except Exception as e:
+            logger.debug(
+                "Got an error when attempting to create an openai " "connection: '{}'".format(e)
+            )
+
+            connection.handle = None
+            connection.state = "fail"
+
+            raise FailedToConnectError(str(e))
+
+        connection.handle = handle
+        connection.state = "open"
+        return connection
+
+    def execute(self, connection):
+        credentials = connection.credentials
+
+        response = openai.ChatCompletion.create(
+            model=credentials.model,
+            messages=[
+                {"role": "user", "content": "Hello!"}
+            ]
+        )
+        return response
 
     @classmethod
-    def get_response(cls,cursor):
-        """
-        Gets a cursor object and returns adapter-specific information
-        about the last executed command generally a AdapterResponse ojbect
-        that has items such as code, rows_affected,etc. can also just be a string ex. "OK"
-        if your cursor does not offer rich metadata.
-        """
-        # ## Example ##
-        # return cursor.status_message
-        pass
+    def close(self, connection):
+        connection.state = ConnectionState.CLOSED
 
-    def cancel(self, connection):
-        """
-        Gets a connection object and attempts to cancel any ongoing queries.
-        """
-        # ## Example ##
-        # tid = connection.handle.transaction_id()
-        # sql = "select cancel_transaction({})".format(tid)
-        # logger.debug("Cancelling query "{}" ({})".format(connection_name, pid))
-        # _, cursor = self.add_query(sql, "master")
-        # res = cursor.fetchone()
-        # logger.debug("Canceled query "{}": {}".format(connection_name, res))
-        pass
+        return connection

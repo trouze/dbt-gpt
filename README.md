@@ -1,4 +1,4 @@
-v<p align="center">
+<p align="center">
   <img src="https://raw.githubusercontent.com/dbt-labs/dbt/ec7dee39f793aa4f7dd3dae37282cc87664813e4/etc/dbt-logo-full.svg" alt="dbt logo" width="500"/>
 </p>
 
@@ -25,7 +25,7 @@ It's also brand new! For Gpt-specific functionality, we will aim for backwards-c
 
  #### Connect to Github
 - run `git init`.
-- Connect your lcoal code to a Github repo.
+- Connect your local code to a Github repo.
 
 ## Join the dbt Community
 
